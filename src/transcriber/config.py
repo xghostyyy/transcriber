@@ -45,7 +45,8 @@ class Config:
             if isinstance(value, bool):
                 lines.append(f"{key} = {'true' if value else 'false'}")
             elif isinstance(value, str):
-                lines.append(f'{key} = "{value}"')
+                escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+                lines.append(f'{key} = "{escaped}"')
             else:
                 lines.append(f"{key} = {value}")
         CONFIG_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
