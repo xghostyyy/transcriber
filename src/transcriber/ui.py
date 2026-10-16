@@ -1,13 +1,19 @@
-"""Консольный интерфейс на rich: баннер, прогресс-бары, панели результата."""
+"""Консольный интерфейс на rich: баннер, прогресс-бары, панели результата.
+
+Оформление в духе opencode: чат-блок для ввода, отступы по краям,
+аккуратные прогресс-бары.
+"""
 
 from __future__ import annotations
 
+import sys
 from contextlib import contextmanager
 from typing import Callable, Iterator
 
 from rich import box
 from rich.console import Console
 from rich.markup import escape
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -24,25 +30,32 @@ from .downloader import VideoInfo
 
 console = Console()
 ACCENT = "cyan"
+MARGIN = 2
+INDENT = " " * MARGIN
 
 # Клавиши в русской раскладке (ЙЦУКЕН → QWERTY)
 _RU_KEYS = {"й": "q", "с": "c", "ы": "s", "к": "r", "т": "n"}
 
 
+def _pad(renderable, top: int = 0, bottom: int = 0) -> Padding:
+    """Отступы по краям для панелей, таблиц и текста."""
+    return Padding(renderable, (top, MARGIN, bottom, MARGIN))
+
+
 def info(message: str) -> None:
-    console.print(f"[{ACCENT}]ℹ[/] {escape(message)}")
+    console.print(f"{INDENT}[{ACCENT}]ℹ[/] {escape(message)}")
 
 
 def ok(message: str) -> None:
-    console.print(f"[bold green]✓[/] {escape(message)}")
+    console.print(f"{INDENT}[bold green]✓[/] {escape(message)}")
 
 
 def warn(message: str) -> None:
-    console.print(f"[yellow]⚠[/] {escape(message)}")
+    console.print(f"{INDENT}[yellow]⚠[/] {escape(message)}")
 
 
 def error(message: str) -> None:
-    console.print(f"[bold red]✗[/] {escape(message)}")
+    console.print(f"{INDENT}[bold red]✗[/] {escape(message)}")
 
 
 def format_hms(seconds: float) -> str:
@@ -65,7 +78,7 @@ def banner(model: str, lang: str, version: str) -> None:
     grid.add_column(justify="left")
     grid.add_column(justify="right")
     grid.add_row(left, right)
-    console.print(Panel(grid, box=box.ROUNDED, border_style=ACCENT, padding=(0, 1)))
+    console.print(_pad(Panel(grid, box=box.ROUNDED, border_style=ACCENT, padding=(0, 1))))
 
 
 def video_card(video: VideoInfo) -> None:
@@ -80,25 +93,113 @@ def video_card(video: VideoInfo) -> None:
     if video.uploader:
         line.append(" · ", "dim")
         line.append(video.uploader, "dim")
-    console.print(line)
+    console.print(Padding(line, (0, 0, 0, MARGIN)))
+
+
+# ── ввод в стиле чат-блока (как в opencode) ─────────────────────────
+
+
+def _box_supported() -> bool:
+    try:
+        return console.is_terminal and not console.legacy_windows and sys.stdin.isatty()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _box_width() -> int:
+    return max(40, min(console.size.width - MARGIN * 2, 88))
+
+
+def prompt_box(text: str = "") -> None:
+    """Статичный чат-бокс с готовым текстом — тот же вид, что у ask()."""
+    width = _box_width()
+    inner = width - 2
+    top = "╭" + "─" * inner + "╮"
+    bottom = "╰" + "─" * inner + "╯"
+    pad = " " * max(inner - 3 - len(text), 0)
+    console.print(f"{INDENT}[dim]{top}[/]")
+    console.print(f"{INDENT}│ [bold {ACCENT}]❯[/] {escape(text)}{pad}[dim]│[/]")
+    console.print(f"{INDENT}[dim]{bottom}[/]")
+
+
+def ask() -> str:
+    """Читает строку ввода внутри скруглённого бокса.
+
+    В обычном терминале рисуется рамка, в пайпах и старых консолях —
+    простой приглашающий символ.
+    """
+    if not _box_supported():
+        return _plain_ask()
+
+    try:
+        width = _box_width()
+        inner = width - 2
+        top = "╭" + "─" * inner + "╮"
+        bottom = "╰" + "─" * inner + "╯"
+
+        console.print(f"{INDENT}[dim]{top}[/]")
+        console.print(f"{INDENT}│ [bold {ACCENT}]❯[/] ", end="")
+        console.file.flush()
+        text = input()
+
+        used = 4 + len(text)  # «│ ❯ » + текст
+        remaining = inner - used
+        if remaining >= 0:
+            target = MARGIN + width - 1
+            sys.stdout.write(f"\x1b[1A\x1b[{target}C│\n")
+        else:
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+        console.print(f"{INDENT}[dim]{bottom}[/]")
+        return text.strip()
+    except (EOFError, KeyboardInterrupt):
+        # закрываем рамку, чтобы консоль осталась аккуратной
+        try:
+            bottom = "╰" + "─" * (_box_width() - 2) + "╯"
+            console.print(f"{INDENT}[dim]{bottom}[/]")
+        except Exception:  # noqa: BLE001
+            pass
+        raise
+    except Exception:  # noqa: BLE001 — рамка не должна ломать ввод
+        return _plain_ask()
+
+
+def _plain_ask() -> str:
+    return console.input(f"{INDENT}[bold {ACCENT}]❯[/] ")
+
+
+def read_key() -> str:
+    """Читает одну клавишу (первый символ ввода), понимает русскую раскладку."""
+    try:
+        raw = _plain_ask().strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return "q"
+    if not raw:
+        return ""
+    return _RU_KEYS.get(raw[0], raw[0])
+
+
+# ── прогресс и статусы ──────────────────────────────────────────────
 
 
 @contextmanager
 def status(initial: str) -> Iterator[Callable[[str], None]]:
     """Спиннер с обновляемым текстом — для скачивания модели и загрузки в память."""
-    with console.status(f"[{ACCENT}]{escape(initial)}", spinner="dots") as spinner:
-        yield lambda message: spinner.update(f"[{ACCENT}]{escape(message)}")
+    with console.status(f"{INDENT}[{ACCENT}]{escape(initial)}", spinner="dots") as spinner:
+        yield lambda message: spinner.update(f"{INDENT}[{ACCENT}]{escape(message)}")
 
 
 @contextmanager
 def download_bar() -> Iterator[Callable[[int, int, float], None]]:
     progress = Progress(
+        TextColumn(INDENT),
         SpinnerColumn(style=ACCENT),
         TextColumn("[bold]Скачиваю аудио[/]"),
         BarColumn(bar_width=None),
         TextColumn("{task.percentage:>3.0f}%"),
         DownloadColumn(),
         TransferSpeedColumn(),
+        TextColumn(INDENT),
         console=console,
         transient=True,
     )
@@ -117,10 +218,12 @@ def download_bar() -> Iterator[Callable[[int, int, float], None]]:
 @contextmanager
 def recognize_bar(duration: float) -> Iterator[Callable[[float, float], None]]:
     progress = Progress(
+        TextColumn(INDENT),
         SpinnerColumn(style=ACCENT),
         TextColumn("[bold]Распознаю речь[/]"),
         BarColumn(bar_width=None),
         TextColumn("{task.fields[timeline]}"),
+        TextColumn(INDENT),
         console=console,
         transient=True,
     )
@@ -143,10 +246,12 @@ def recognize_bar(duration: float) -> Iterator[Callable[[float, float], None]]:
 @contextmanager
 def translate_bar(label: str) -> Iterator[Callable[[int, int], None]]:
     progress = Progress(
+        TextColumn(INDENT),
         SpinnerColumn(style=ACCENT),
         TextColumn("[bold]{task.description}[/]"),
         BarColumn(bar_width=None),
         TextColumn("{task.fields[parts]}"),
+        TextColumn(INDENT),
         console=console,
         transient=True,
     )
@@ -164,28 +269,20 @@ def translate_bar(label: str) -> Iterator[Callable[[int, int], None]]:
         yield update
 
 
+# ── результат, меню, справка ────────────────────────────────────────
+
+
 def show_result(title: str, text: str, meta: str) -> None:
     console.print()
     header = Text.assemble((title, "bold"), ("\n", None), (meta, "dim"))
-    console.print(Panel(header, box=box.ROUNDED, border_style="dim", padding=(0, 1)))
-    console.print(Text(text))  # без markup — текст сохраняется как есть
+    console.print(_pad(Panel(header, box=box.ROUNDED, border_style="dim", padding=(0, 1))))
+    console.print(Padding(Text(text), (1, MARGIN, 1, MARGIN)))  # без markup — текст как есть
     console.print()
 
 
 def menu_line(options: list[tuple[str, str]]) -> None:
     parts = "  ".join(f"[{ACCENT}]\\[{key}][/] {label}" for key, label in options)
-    console.print(parts)
-
-
-def read_key() -> str:
-    """Читает одну клавишу (первый символ ввода), понимает русскую раскладку."""
-    try:
-        raw = console.input(f"[bold {ACCENT}]>[/] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return "q"
-    if not raw:
-        return ""
-    return _RU_KEYS.get(raw[0], raw[0])
+    console.print(f"{INDENT}{parts}")
 
 
 def history_list(entries: list) -> None:
@@ -204,7 +301,7 @@ def history_list(entries: list) -> None:
             f"{entry.detected_language}→{entry.output_language}",
             format_hms(entry.duration),
         )
-    console.print(table)
+    console.print(_pad(table))
 
 
 def help_panel() -> None:
@@ -220,5 +317,5 @@ def help_panel() -> None:
     table.add_column()
     for command, description in rows:
         table.add_row(command, description)
-    console.print(Panel(table, title="команды", border_style="dim", box=box.ROUNDED))
-    console.print("[dim]Или просто вставьте ссылку на видео и нажмите Enter.[/]")
+    console.print(_pad(Panel(table, title="команды", border_style="dim", box=box.ROUNDED)))
+    console.print(f"{INDENT}[dim]Или просто вставьте ссылку на видео и нажмите Enter.[/]")

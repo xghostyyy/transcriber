@@ -27,7 +27,7 @@ def main() -> None:
     try:
         ui.banner("turbo", "RU", __version__)
         console.print()
-        console.print(f"[bold {ui.ACCENT}]>[/] https://www.youtube.com/watch?v=jNQXAC9IVRw")
+        ui.prompt_box("https://www.youtube.com/watch?v=jNQXAC9IVRw")
         console.print()
         ui.video_card(
             VideoInfo(

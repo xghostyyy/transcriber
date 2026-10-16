@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import sys
@@ -50,6 +51,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--keep-audio", action="store_true", help="не удалять скачанное аудио")
     parser.add_argument(
+        "--proxy",
+        metavar="АДРЕС",
+        help="прокси для скачивания и перевода, например socks5://127.0.0.1:1080",
+    )
+    parser.add_argument(
         "--output-dir", metavar="ПАПКА", help="куда сохранять файлы (по умолчанию ./output)"
     )
     parser.add_argument("--version", action="version", version=f"transcriber {__version__}")
@@ -78,8 +84,12 @@ def _do_copy(text: str) -> None:
 def _ask_default_language() -> str:
     ui.console.print("[bold]Язык результата по умолчанию?[/]")
     ui.console.print(f"  [{ui.ACCENT}][1][/] Русский   [{ui.ACCENT}][2][/] English")
-    answer = ui.console.input(f"[bold {ui.ACCENT}]>[/] ").strip().lower()
+    answer = ui.ask().lower()
     return "en" if answer in ("2", "en", "english", "английский") else "ru"
+
+
+def _proxy(cfg: Config, args: argparse.Namespace) -> str:
+    return (args.proxy or cfg.proxy or "").strip()
 
 
 def _force_utf8_stdio() -> None:
@@ -108,7 +118,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.output_dir:
         cfg.output_dir = args.output_dir
 
+    proxy = _proxy(cfg, args)
+    if proxy:
+        # requests (переводчик, загрузка моделей) подхватывает прокси из env,
+        # yt-dlp получает его явным параметром
+        os.environ["HTTP_PROXY"] = proxy
+        os.environ["HTTPS_PROXY"] = proxy
+
     ui.banner(cfg.model, cfg.lang.upper(), __version__)
+    if proxy:
+        ui.info(f"Скачивание и перевод через прокси: {proxy}")
 
     if first_run and not args.lang and sys.stdin.isatty():
         cfg.lang = _ask_default_language()
@@ -128,7 +147,7 @@ def _repl(cfg: Config, args: argparse.Namespace) -> int:
     ui.info("Вставьте ссылку на видео и нажмите Enter. /help — список команд.")
     while True:
         try:
-            line = ui.console.input(f"[bold {ui.ACCENT}]>[/] ").strip()
+            line = ui.ask()
         except EOFError:
             ui.console.print()
             return 0
@@ -148,9 +167,16 @@ def _repl(cfg: Config, args: argparse.Namespace) -> int:
 
 
 def _process_url(url: str, cfg: Config, args: argparse.Namespace) -> str:
+    proxy = _proxy(cfg, args)
+
+    def on_retry(message: str) -> None:
+        ui.info(message)
+
     ui.info("Получаю информацию о видео…")
     try:
-        video = fetch_info(url, args.cookies_from_browser)
+        video = fetch_info(
+            url, args.cookies_from_browser, proxy=proxy, on_retry=on_retry
+        )
     except DownloadError as exc:
         ui.error(str(exc))
         return "error"
@@ -160,7 +186,14 @@ def _process_url(url: str, cfg: Config, args: argparse.Namespace) -> str:
     audio_path: Optional[Path] = None
     try:
         with ui.download_bar() as update:
-            audio_path = download_audio(url, workdir, update, args.cookies_from_browser)
+            audio_path = download_audio(
+                url,
+                workdir,
+                update,
+                args.cookies_from_browser,
+                proxy=proxy,
+                on_retry=on_retry,
+            )
 
         with ui.status("Подготовка модели…") as set_status:
             model = load_model(cfg.model, cfg.device, on_status=set_status)
@@ -366,7 +399,7 @@ def _show_history(cfg: Config) -> None:
     ui.console.print(
         f"[dim]Введите номер записи (1–{len(entries)}) или Enter — отмена[/]"
     )
-    raw = ui.console.input(f"[bold {ui.ACCENT}]>[/] ").strip().lower()
+    raw = ui.ask().lower()
     if not raw.isdigit():
         return
     index = int(raw)
