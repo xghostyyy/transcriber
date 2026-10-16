@@ -23,6 +23,14 @@ dependencies = [
 [project.scripts]
 transcriber = "transcriber.cli:main"
 
+[project.optional-dependencies]
+# ускорение на видеокарте NVIDIA: uv sync --extra cuda
+cuda = [
+    "nvidia-cuda-runtime-cu12>=12.4,<13",
+    "nvidia-cublas-cu12>=12.4,<13",
+    "nvidia-cudnn-cu12>=9.0,<10",
+]
+
 [build-system]
 requires = ["uv_build>=0.12.5,<0.13.0"]
 build-backend = "uv_build"

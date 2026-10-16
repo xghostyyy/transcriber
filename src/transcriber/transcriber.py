@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
@@ -96,14 +98,16 @@ def _ensure_model(model_name: str, on_status: Callable[[str], None]) -> str:
 
 def _resolve_device(preference: str) -> tuple[str, str]:
     if preference == "cuda":
-        return "cuda", "float16"
+        return "cuda", "int8_float16"
     if preference == "cpu":
         return "cpu", "int8"
     try:
         import ctranslate2
 
         if ctranslate2.get_cuda_device_count() > 0:
-            return "cuda", "float16"
+            # int8_float16 вместо float16: вчетверо меньше видеопамяти —
+            # иначе turbo не влезает в 4 ГБ и всё упирается в подкачку
+            return "cuda", "int8_float16"
     except Exception:  # noqa: BLE001
         pass
     return "cpu", "int8"
@@ -119,6 +123,45 @@ def _probe(model: WhisperModel) -> None:
         pass
 
 
+# держим ссылки на каталоги DLL: иначе они отключатся при сборке мусора
+_DLL_HANDLES: list = []
+
+# одна загруженная модель на всю сессию: повторная загрузка turbo занимает секунды
+_MODEL_CACHE: dict[tuple[str, str], WhisperModel] = {}
+
+
+def _enable_cuda_dlls() -> None:
+    """Windows: подключает cuBLAS/cuDNN из pip-пакетов nvidia-* (extra «cuda»).
+
+    Без них ctranslate2 видит драйвер и видеокарту, но падает на первом
+    же кодировании с «Library cublas64_12.dll is not found».
+    """
+    if sys.platform != "win32":
+        return
+    found: list[str] = []
+    for package in ("cuda_runtime", "cublas", "cudnn"):
+        try:
+            spec = importlib.util.find_spec(f"nvidia.{package}")
+        except (ImportError, ValueError):
+            continue
+        if not spec or not spec.submodule_search_locations:
+            continue
+        bin_dir = Path(next(iter(spec.submodule_search_locations))) / "bin"
+        if bin_dir.is_dir():
+            found.append(str(bin_dir))
+    if not found:
+        return
+    # ctranslate2 зовёт LoadLibrary без флагов поиска — каталоги должны быть
+    # именно в PATH; add_dll_directory сам по себе в этом случае не помогает
+    os.environ["PATH"] = os.pathsep.join(found) + os.pathsep + os.environ.get("PATH", "")
+    if hasattr(os, "add_dll_directory"):
+        for directory in found:
+            try:
+                _DLL_HANDLES.append(os.add_dll_directory(directory))
+            except OSError:
+                pass
+
+
 def load_model(
     model_name: str,
     device_preference: str = "auto",
@@ -126,7 +169,13 @@ def load_model(
 ) -> WhisperModel:
     """Готовит модель к работе: при необходимости скачивает и держит в памяти."""
     status = on_status or (lambda _msg: None)
+    cache_key = (model_name, device_preference)
+    cached = _MODEL_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
     model_path = _ensure_model(model_name, status)
+    _enable_cuda_dlls()
     status("Загружаю модель в память…")
     device, compute_type = _resolve_device(device_preference)
 
@@ -138,18 +187,27 @@ def load_model(
             cpu_threads=os.cpu_count() or 4,
         )
 
+    model: Optional[WhisperModel] = None
     if device == "cuda":
         try:
-            model = make("cuda", "float16")
+            model = make("cuda", compute_type)
             _probe(model)
-            return model
         except Exception:  # noqa: BLE001 — драйвер есть, а библиотек может не быть
-            status("GPU недоступен (нет CUDA-библиотек), использую CPU…")
+            status(
+                "GPU недоступен (нет CUDA-библиотек) — считаю на CPU, это медленнее. "
+                "Подробности: README, раздел про видеокарту."
+            )
+            model = None
 
-    try:
-        return make("cpu", "int8")
-    except Exception as exc:  # noqa: BLE001
-        raise TranscribeError(f"Не удалось загрузить модель: {exc}") from exc
+    if model is None:
+        try:
+            model = make("cpu", "int8")
+        except Exception as exc:  # noqa: BLE001
+            raise TranscribeError(f"Не удалось загрузить модель: {exc}") from exc
+
+    _MODEL_CACHE.clear()
+    _MODEL_CACHE[cache_key] = model
+    return model
 
 
 def transcribe_audio(
