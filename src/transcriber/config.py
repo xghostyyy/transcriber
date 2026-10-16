@@ -22,6 +22,7 @@ class Config:
     device: str = "auto"      # auto | cpu | cuda
     output_dir: str = ""      # пусто = папка ./output рядом с местом запуска
     max_history: int = 100    # сколько записей истории хранить
+    proxy: str = ""           # прокси для сети, например socks5://127.0.0.1:1080
 
     @classmethod
     def load(cls) -> "Config":

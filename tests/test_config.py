@@ -23,6 +23,13 @@ def test_roundtrip(tmp_path, monkeypatch):
     assert loaded.output_dir == str(tmp_path)
 
 
+def test_proxy_roundtrip(tmp_path, monkeypatch):
+    monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
+    monkeypatch.setattr(config_mod, "CONFIG_PATH", tmp_path / "config.toml")
+    Config(proxy="socks5://127.0.0.1:1080").save()
+    assert Config.load().proxy == "socks5://127.0.0.1:1080"
+
+
 def test_unknown_language_falls_back_to_ru(tmp_path, monkeypatch):
     path = tmp_path / "config.toml"
     path.write_text('lang = "de"\n', encoding="utf-8")
