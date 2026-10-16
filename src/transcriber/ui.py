@@ -151,7 +151,7 @@ def translate_bar(label: str) -> Iterator[Callable[[int, int], None]]:
         transient=True,
     )
     with progress:
-        task = progress.add_task("translate", description=label, total=1, completed=0, parts="")
+        task = progress.add_task(label, total=1, completed=0, parts="")
 
         def update(done: int, parts_total: int) -> None:
             progress.update(

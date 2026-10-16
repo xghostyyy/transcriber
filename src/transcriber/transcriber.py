@@ -7,8 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-# tqdm-бары huggingface отключены — показываем собственный индикатор
+# tqdm-бары и служебные предупреждения huggingface отключены — показываем свой индикатор
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+
+import logging  # noqa: E402
+
+logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
 from faster_whisper import WhisperModel  # noqa: E402
 from faster_whisper.utils import download_model  # noqa: E402
@@ -104,6 +109,16 @@ def _resolve_device(preference: str) -> tuple[str, str]:
     return "cpu", "int8"
 
 
+def _probe(model: WhisperModel) -> None:
+    """Прогоняет секунду тишины, чтобы поймать отсутствие CUDA-библиотек заранее."""
+    import numpy as np
+
+    silence = np.zeros(16000, dtype=np.float32)
+    segments, _ = model.transcribe(silence, beam_size=1, vad_filter=False)
+    for _segment in segments:
+        pass
+
+
 def load_model(
     model_name: str,
     device_preference: str = "auto",
@@ -123,15 +138,17 @@ def load_model(
             cpu_threads=os.cpu_count() or 4,
         )
 
+    if device == "cuda":
+        try:
+            model = make("cuda", "float16")
+            _probe(model)
+            return model
+        except Exception:  # noqa: BLE001 — драйвер есть, а библиотек может не быть
+            status("GPU недоступен (нет CUDA-библиотек), использую CPU…")
+
     try:
-        return make(device, compute_type)
+        return make("cpu", "int8")
     except Exception as exc:  # noqa: BLE001
-        if device != "cpu":
-            status("GPU недоступен, использую CPU…")
-            try:
-                return make("cpu", "int8")
-            except Exception as exc2:  # noqa: BLE001
-                raise TranscribeError(f"Не удалось загрузить модель: {exc2}") from exc2
         raise TranscribeError(f"Не удалось загрузить модель: {exc}") from exc
 
 

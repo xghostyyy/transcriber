@@ -81,6 +81,7 @@ def _base_opts(cookies_from_browser: Optional[str]) -> dict:
     opts: dict = {
         "quiet": True,
         "no_warnings": True,
+        "noprogress": True,
         "noplaylist": True,
         "playlist_items": "1",
         "socket_timeout": 30,
