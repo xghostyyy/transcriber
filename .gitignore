@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Виртуальное окружение uv
+.venv
+
+# Результаты работы программы
+output/
+
+# Скачанное аудио (остаётся при флаге --keep-audio)
+audio.*
+
+# Инструменты и ОС
+.pytest_cache/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

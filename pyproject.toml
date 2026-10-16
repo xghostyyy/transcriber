@@ -1,0 +1,23 @@
+[project]
+name = "transcriber"
+version = "0.1.0"
+description = "Консольный транскрибатор видео: ссылка на YouTube, Shorts, TikTok, Instagram и другие площадки — и готовый текст на русском или английском"
+readme = "README.md"
+authors = [
+    { name = "xghostyyy", email = "dihh.online@mail.ru" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "deep-translator>=1.11.4",
+    "faster-whisper>=1.2.1",
+    "pyperclip>=1.11.0",
+    "rich>=15.0.0",
+    "yt-dlp>=2026.8.19",
+]
+
+[project.scripts]
+transcriber = "transcriber:main"
+
+[build-system]
+requires = ["uv_build>=0.12.5,<0.13.0"]
+build-backend = "uv_build"
