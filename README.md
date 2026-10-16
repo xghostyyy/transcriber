@@ -7,6 +7,7 @@
 ![Python](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-managed-DE5FE9?logo=astral&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-4B5563)
+![License](https://img.shields.io/badge/license-MIT-22C55E)
 
 ## Возможности
 
@@ -148,4 +149,4 @@ yt-dlp закрывает 1000+ сайтов, в том числе:
 
 ## Лицензия
 
-Личный проект — используй как хочешь. Уважай авторов видео и условия площадок.
+[MIT](LICENSE) © xghostyyy. Уважай авторов видео и условия площадок.

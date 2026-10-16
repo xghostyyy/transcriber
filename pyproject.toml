@@ -7,6 +7,7 @@ authors = [
     { name = "xghostyyy", email = "dihh.online@mail.ru" }
 ]
 keywords = ["transcription", "whisper", "speech-to-text", "yt-dlp", "cli"]
+license = "MIT"
 requires-python = ">=3.12"
 dependencies = [
     "av<19",
