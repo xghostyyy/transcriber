@@ -161,7 +161,13 @@ def _repl(cfg: Config, args: argparse.Namespace) -> int:
         if not _looks_like_url(line):
             ui.warn("Это не похоже на ссылку. Вставьте URL видео или введите /help.")
             continue
-        if _process_url(line, cfg, args) == "quit":
+        next_line = line
+        while True:
+            outcome = _process_url(next_line, cfg, args)
+            if not _looks_like_url(outcome):
+                break
+            next_line = outcome  # ссылка, вставленная прямо в меню результата
+        if outcome == "quit":
             ui.info("До встречи!")
             return 0
 
@@ -199,7 +205,7 @@ def _process_url(url: str, cfg: Config, args: argparse.Namespace) -> str:
             model = load_model(cfg.model, cfg.device, on_status=set_status)
         with ui.recognize_bar(video.duration) as update:
             result = transcribe_audio(model, audio_path, on_progress=update)
-        del model
+        # модель остаётся в памяти: следующая ссылка начнёт считаться сразу
 
         if not result.segments:
             ui.warn("В видео не обнаружена речь.")
@@ -283,8 +289,11 @@ def _result_menu(
         return "done"
 
     ui.menu_line(_RESULT_MENU)
+    ui.console.print(f"{ui.INDENT}[dim]Клавиша и Enter — или сразу вставьте новую ссылку.[/]")
     while True:
-        key = ui.read_key()
+        key, raw = ui.read_menu()
+        if _looks_like_url(raw):
+            return raw
         if key == "c":
             _do_copy(final_text)
         elif key == "s":

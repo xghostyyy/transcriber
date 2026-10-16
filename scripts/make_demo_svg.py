@@ -53,6 +53,7 @@ def main() -> None:
                 ("q", "выход"),
             ]
         )
+        console.print(f"{ui.INDENT}[dim]Клавиша и Enter — или сразу вставьте новую ссылку.[/]")
     finally:
         ui.console = original
 

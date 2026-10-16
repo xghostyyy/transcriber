@@ -168,15 +168,25 @@ def _plain_ask() -> str:
     return console.input(f"{INDENT}[bold {ACCENT}]❯[/] ")
 
 
+def read_menu() -> tuple[str, str]:
+    """Читает строку меню: (клавиша, строка целиком).
+
+    Клавиша — первый символ с поправкой на русскую раскладку; строка целиком
+    нужна, чтобы в меню можно было сразу вставить ссылку на новое видео.
+    """
+    try:
+        raw = _plain_ask().strip()
+    except (EOFError, KeyboardInterrupt):
+        return "q", "q"
+    if not raw:
+        return "", ""
+    first = raw[0].lower()
+    return _RU_KEYS.get(first, first), raw
+
+
 def read_key() -> str:
     """Читает одну клавишу (первый символ ввода), понимает русскую раскладку."""
-    try:
-        raw = _plain_ask().strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        return "q"
-    if not raw:
-        return ""
-    return _RU_KEYS.get(raw[0], raw[0])
+    return read_menu()[0]
 
 
 # ── прогресс и статусы ──────────────────────────────────────────────

@@ -24,6 +24,27 @@ def test_prompt_box_lines_are_aligned():
     assert {len(line) for line in lines} == {58}
 
 
+def test_read_menu_returns_key_and_full_line(monkeypatch):
+    # строку с точкой меню отдаёт целиком — её распознаёт cli как ссылку
+    monkeypatch.setattr(ui, "_plain_ask", lambda: "ссылка.рф")
+    assert ui.read_menu() == ("c", "ссылка.рф")
+
+
+def test_read_menu_understands_russian_layout(monkeypatch):
+    monkeypatch.setattr(ui, "_plain_ask", lambda: "Копировать")
+    assert ui.read_key() == "r"
+    monkeypatch.setattr(ui, "_plain_ask", lambda: "")
+    assert ui.read_key() == ""
+
+
+def test_read_menu_survives_eof(monkeypatch):
+    def raise_eof() -> str:
+        raise EOFError
+
+    monkeypatch.setattr(ui, "_plain_ask", raise_eof)
+    assert ui.read_menu() == ("q", "q")
+
+
 def test_ask_draws_frame_and_repositions_cursor(monkeypatch):
     buffer = io.StringIO()
     original = ui.console
